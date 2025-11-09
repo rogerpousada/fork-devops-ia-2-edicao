@@ -73,15 +73,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check DO token (deploy)
+        id: docheck_deploy_staging
+        run: |
+          if [ -n "${{ secrets.DIGITAL_OCEAN_ACCESS_TOKEN }}" ]; then
+            echo "DO_TOKEN_PRESENT=true" >> $GITHUB_OUTPUT
+          else
+            echo "DO_TOKEN_PRESENT=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Authenticate doctl
+        if: ${{ steps.docheck_deploy_staging.outputs.DO_TOKEN_PRESENT == 'true' }}
         uses: digitalocean/action-doctl@v2
         with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          token: ${{ secrets.DIGITAL_OCEAN_ACCESS_TOKEN }}
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v3
 
       - name: Configure kubeconfig for staging cluster
+        if: ${{ steps.docheck_deploy_staging.outputs.DO_TOKEN_PRESENT == 'true' }}
         run: |
           doctl kubernetes cluster kubeconfig save "${{ secrets.STAGING_CLUSTER_NAME }}"
 
@@ -97,6 +108,7 @@ jobs:
           envsubst < 02-encontros-tech/k8s/manifests.yaml > /tmp/encontros-tech-rendered.yaml
 
       - name: Create/update DB secret (staging)
+        if: ${{ steps.docheck_deploy_staging.outputs.DO_TOKEN_PRESENT == 'true' }}
         run: |
           kubectl create secret generic encontros-tech-secrets \
             --from-literal=DATABASE_URL="${{ secrets.DATABASE_URL_STAGING }}" \
@@ -116,15 +128,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check DO token (deploy)
+        id: docheck_deploy_prod
+        run: |
+          if [ -n "${{ secrets.DIGITAL_OCEAN_ACCESS_TOKEN }}" ]; then
+            echo "DO_TOKEN_PRESENT=true" >> $GITHUB_OUTPUT
+          else
+            echo "DO_TOKEN_PRESENT=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Authenticate doctl
+        if: ${{ steps.docheck_deploy_prod.outputs.DO_TOKEN_PRESENT == 'true' }}
         uses: digitalocean/action-doctl@v2
         with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          token: ${{ secrets.DIGITAL_OCEAN_ACCESS_TOKEN }}
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v3
 
       - name: Configure kubeconfig for production cluster
+        if: ${{ steps.docheck_deploy_prod.outputs.DO_TOKEN_PRESENT == 'true' }}
         run: |
           doctl kubernetes cluster kubeconfig save "${{ secrets.PRODUCTION_CLUSTER_NAME }}"
 
@@ -138,11 +161,13 @@ jobs:
           envsubst < 02-encontros-tech/k8s/manifests.yaml > /tmp/encontros-tech-rendered.yaml
 
       - name: Create/update DB secret (production)
+        if: ${{ steps.docheck_deploy_prod.outputs.DO_TOKEN_PRESENT == 'true' }}
         run: |
           kubectl create secret generic encontros-tech-secrets \
             --from-literal=DATABASE_URL="${{ secrets.DATABASE_URL_PRODUCTION }}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Apply manifests to production
+        if: ${{ steps.docheck_deploy_prod.outputs.DO_TOKEN_PRESENT == 'true' }}
         run: |
           kubectl apply -f /tmp/encontros-tech-rendered.yaml
