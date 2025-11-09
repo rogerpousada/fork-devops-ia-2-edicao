@@ -23,7 +23,7 @@ spec:
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: encontros-tech-db-secret
+              name: encontros-tech-secrets
               key: database-url
         - name: APP_TITLE
           value: "Encontros Tech"
