@@ -14,9 +14,34 @@ spec:
       labels:
         app: encontros-tech
     spec:
+      volumes:
+      - name: app-code
+        emptyDir: {}
+      initContainers:
+      - name: fetch-and-build
+        image: python:3.11-slim
+        command:
+          - /bin/sh
+          - -c
+          - |
+            set -eux
+            apt-get update
+            # install build deps and venv support
+            apt-get install -y --no-install-recommends git build-essential libpq-dev python3-dev python3-venv
+            rm -rf /var/lib/apt/lists/*
+            # clone only the repo we need (shallow)
+            git clone --depth 1 https://github.com/rogerpousada/fork-devops-ia-2-edicao.git /app
+            cd /app/02-encontros-tech
+            # create a virtualenv in the shared volume and install dependencies there
+            python -m venv /app/venv
+            /app/venv/bin/pip install --no-cache-dir -r requirements.txt
+        volumeMounts:
+        - name: app-code
+          mountPath: /app
       containers:
       - name: encontros-tech
-        image: fabricioveronez/bootcamp-encontros-tech:v1
+        image: python:3.11-slim
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
         env:
@@ -43,6 +68,33 @@ spec:
           value: "1.0.0"
         - name: PROMETHEUS_MULTIPROC_DIR
           value: "/tmp/prometheus_multiproc"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        volumeMounts:
+        - name: app-code
+          mountPath: /app
+        workingDir: /app/02-encontros-tech
+        # run the gunicorn binary from the virtualenv created by the initContainer
+        command: ["/app/venv/bin/gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "120", "main:app"]
 ---
 apiVersion: v1
 kind: Service

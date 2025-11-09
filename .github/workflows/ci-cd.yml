@@ -1,0 +1,131 @@
+name: CI/CD — Build and Deploy
+
+on:
+  push:
+    branches: [ main, staging ]
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: encontros-tech
+  DEFAULT_IMAGE: python:3.11-slim
+  SKIP_BUILD: 'true'
+
+jobs:
+  build:
+    name: Build and push image
+    if: ${{ env.SKIP_BUILD != 'true' }}
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.set-image.outputs.image }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Authenticate doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Login to DigitalOcean Container Registry
+        run: doctl registry login
+
+      - name: Build and push image to DOCR
+        uses: docker/build-push-action@v5
+        with:
+          context: ./02-encontros-tech
+          push: true
+          tags: registry.digitalocean.com/${{ secrets.DOCR_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set image output
+        id: set-image
+        run: echo "image=registry.digitalocean.com/${{ secrets.DOCR_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+  deploy-staging:
+    name: Deploy to Staging (homologação)
+    needs: build
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Configure kubeconfig for staging cluster
+        run: |
+          doctl kubernetes cluster kubeconfig save "${{ secrets.STAGING_CLUSTER_NAME }}"
+
+      - name: Render manifests with image
+        run: |
+          # Install envsubst (gettext)
+          sudo apt-get update -y && sudo apt-get install -y gettext-base
+          # Prefer image from build output; fallback to DEFAULT_IMAGE
+          IMAGE="${{ needs.build.outputs.image }}"
+          if [ -z "${IMAGE}" ]; then IMAGE="${{ env.DEFAULT_IMAGE }}"; fi
+          echo "Using image: ${IMAGE}"
+          export IMAGE
+          envsubst < 02-encontros-tech/k8s/manifests.yaml > /tmp/encontros-tech-rendered.yaml
+
+      - name: Create/update DB secret (staging)
+        run: |
+          kubectl create secret generic encontros-tech-secrets \
+            --from-literal=DATABASE_URL="${{ secrets.DATABASE_URL_STAGING }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply manifests to staging
+        run: |
+          kubectl apply -f /tmp/encontros-tech-rendered.yaml
+
+  deploy-production:
+    name: Deploy to Production
+    needs: build
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Configure kubeconfig for production cluster
+        run: |
+          doctl kubernetes cluster kubeconfig save "${{ secrets.PRODUCTION_CLUSTER_NAME }}"
+
+      - name: Render manifests with image
+        run: |
+          sudo apt-get update -y && sudo apt-get install -y gettext-base
+          IMAGE="${{ needs.build.outputs.image }}"
+          if [ -z "${IMAGE}" ]; then IMAGE="${{ env.DEFAULT_IMAGE }}"; fi
+          echo "Using image: ${IMAGE}"
+          export IMAGE
+          envsubst < 02-encontros-tech/k8s/manifests.yaml > /tmp/encontros-tech-rendered.yaml
+
+      - name: Create/update DB secret (production)
+        run: |
+          kubectl create secret generic encontros-tech-secrets \
+            --from-literal=DATABASE_URL="${{ secrets.DATABASE_URL_PRODUCTION }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply manifests to production
+        run: |
+          kubectl apply -f /tmp/encontros-tech-rendered.yaml
