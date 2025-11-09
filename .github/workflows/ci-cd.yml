@@ -29,7 +29,7 @@ jobs:
       - name: Check DO token
         id: docheck
         run: |
-          if [ -n "${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}" ]; then
+          if [ -n "${{ secrets.DIGITAL_OCEAN_ACCESS_TOKEN }}" ]; then
             echo "DO_TOKEN_PRESENT=true" >> $GITHUB_OUTPUT
           else
             echo "DO_TOKEN_PRESENT=false" >> $GITHUB_OUTPUT
@@ -39,7 +39,7 @@ jobs:
         if: ${{ env.SKIP_BUILD != 'true' && steps.docheck.outputs.DO_TOKEN_PRESENT == 'true' }}
         uses: digitalocean/action-doctl@v2
         with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          token: ${{ secrets.DIGITAL_OCEAN_ACCESS_TOKEN }}
 
       - name: Login to DigitalOcean Container Registry
         if: ${{ env.SKIP_BUILD != 'true' && steps.docheck.outputs.DO_TOKEN_PRESENT == 'true' }}
