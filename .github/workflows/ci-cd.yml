@@ -26,12 +26,23 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
+      - name: Check DO token
+        id: docheck
+        run: |
+          if [ -n "${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}" ]; then
+            echo "DO_TOKEN_PRESENT=true" >> $GITHUB_OUTPUT
+          else
+            echo "DO_TOKEN_PRESENT=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Authenticate doctl
+        if: ${{ env.SKIP_BUILD != 'true' && steps.docheck.outputs.DO_TOKEN_PRESENT == 'true' }}
         uses: digitalocean/action-doctl@v2
         with:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
       - name: Login to DigitalOcean Container Registry
+        if: ${{ env.SKIP_BUILD != 'true' && steps.docheck.outputs.DO_TOKEN_PRESENT == 'true' }}
         run: doctl registry login
 
       - name: Build and push image to DOCR
