@@ -242,22 +242,15 @@ class Event:
 
 ### Eventos
 
-- `GET /api/events/` - Listar eventos
-- `POST /api/events/` - Criar evento
-- `GET /api/events/by-token/{token}` - Buscar por token
-- `PUT /api/events/by-token/{token}` - Atualizar evento
 
 ### Páginas Web
 
-- `GET /` - Página inicial com listagem
-- `GET /events/new` - Formulário de criação
-- `GET /events/edit/{token}` - Formulário de edição
-- `GET /events/{id}` - Detalhes do evento
 
 ### Monitoramento
 
-- `GET /metrics` - Métricas Prometheus
-- `GET /health` - Health check
+
+<!-- chore: retrigger CI -->
+This is a tiny commit to retrigger the GitHub Actions workflow after CI pipeline fixes.
 
 ---
 
